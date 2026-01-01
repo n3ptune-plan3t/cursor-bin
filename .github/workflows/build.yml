@@ -1,0 +1,51 @@
+name: Build niri-dinit (Artix)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (Artix)
+    runs-on: ubuntu-latest
+    container:
+      image: artixlinux/artixlinux:base-devel
+      options: --security-opt seccomp=unconfined
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update system & install build deps
+        run: |
+          pacman -Syu --noconfirm
+
+          # pkg depends
+          pacman -S --noconfirm --needed \
+            libpipewire pango glib2 cairo libdisplay-info mesa \
+            seatd udev libinput pixman libxkbcommon gcc-libs glibc \
+            dbus-dinit-user
+
+          # make deps
+          pacman -S --noconfirm --needed \
+            git cargo rust rustup clang base-devel
+
+      - name: Add build user (required for makepkg)
+        run: |
+          useradd -m builduser
+          echo "builduser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builduser:builduser .
+
+      - name: Build package
+        run: |
+          sudo -u builduser bash -lc "
+            rustup default stable
+            makepkg -sf --noconfirm
+          "
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: niri-dinit-artix
+          path: "*.pkg.tar.*"
