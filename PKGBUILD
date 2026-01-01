@@ -1,78 +1,36 @@
-# Maintainer: Mark Karlinsk <mark.devnull@gmail.com>
-pkgname=niri-dinit
-pkgver=25.08
-pkgrel=4
-pkgdesc="A scrollable-tiling Wayland compositor (with dinit dependency instead of systemd)"
+# Maintainer: Gunther Schulz <dev@guntherschulz.de>
+
+pkgname=cursor-bin
+pkgver=2.3.18
+pkgrel=1
+pkgdesc='AI-first coding environment'
 arch=('x86_64')
-url="https://github.com/YaLTeR/niri"
-license=('GPL-3.0-or-later')
-depends=(
-    'libpipewire'
-    'pango'
-    'glib2'
-    'cairo'
-    'libdisplay-info'
-    'mesa'
-    'libseat.so'
-    'libudev.so'
-    'libinput'
-    'pixman'
-    'libxkbcommon'
-    'gcc-libs'
-    'glibc'
-    'dbus-dinit-user'
-)
-makedepends=(
-    'git'
-    'cargo'
-    'clang'
-)
-optdepends=(
-  'alacritty: suggested cross-platform OpenGL terminal emulator'
-  'fuzzel: suggested Wayland application launcher'
-  'gnome-keyring: org.freedesktop.secrets portal implementation'
-  'mako: suggested Wayland notification daemon'
-  'swaybg: suggested Wayland wallpaper tool'
-  'swaylock: suggested Wayland screen locking utility'
-  'swayidle: suggested Wayland idle management daemon'
-  'waybar: suggested Wayland highly customizable desktop bar'
-  'xdg-desktop-portal-gtk: XDG desktop portal that implements most functionality'
-  'xdg-desktop-portal-gnome: XDG desktop portal that supports screencasting'
-  'xwayland-satellite: Rootless Xwayland integration to run X11 apps'
-)
-provides=("niri=${pkgver}")
-conflicts=("niri")
-options=(!lto)
-_tag=d85b524d7c07a47345eab434f471f2b7bfa2c9c3 # git rev-parse "v$pkgver"
-source=("git+${url}.git#tag=${_tag}"
-        "0001-Update-libdisplay-info-and-Smithay-popup-destruction.patch")
-sha256sums=('841b899aff667b1333feac47853dc12806dccd27df575ba68dbd2a682df08a77'
-            'd574b6131eda1f133fbc38a270ec9fa00fe03227545e5514f9ec9920619d262e')
-
-prepare() {
-    cd "$srcdir/niri"
-    patch -Np1 -i ../0001-Update-libdisplay-info-and-Smithay-popup-destruction.patch
-    export RUSTUP_TOOLCHAIN=stable
-    export CARGO_HOME="$(pwd)/.cargo"
-    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
-}
-
-build() {
-    cd "$srcdir/niri"
-    export RUSTFLAGS="--remap-path-prefix=$srcdir=/"
-    export RUSTUP_TOOLCHAIN=stable
-    export CARGO_HOME="$(pwd)/.cargo"
-    export CARGO_TARGET_DIR=target
-    cargo build --frozen --release --no-default-features --features dinit,dbus,xdp-gnome-screencast
-}
-
+url="https://www.cursor.com"
+license=('LicenseRef-Cursor_EULA')
+_electron=electron37
+depends=(xdg-utils ripgrep $_electron nodejs
+  'gcc-libs' 'hicolor-icon-theme' 'libxkbfile')
+options=(!strip) # Don't break ext of VSCode
+_commit=df371ac0d93fe1a68d05eeb59a09c5c39add0c89
+source=("https://downloads.cursor.com/production/${_commit}/linux/x64/deb/amd64/deb/cursor_${pkgver}_amd64.deb"
+https://gitlab.archlinux.org/archlinux/packaging/packages/code/-/raw/main/code.sh rg.sh)
+sha512sums=('SKIP'
+  '937299c6cb6be2f8d25f7dbc95cf77423875c5f8353b8bd6cd7cc8e5603cbf8405b14dbf8bd615db2e3b36ed680fc8e1909410815f7f8587b7267a699e00ab37'
+  'e79fe7659f59d1ae02fc68816399bfd31587315df6cdb6ccf1d0ca76f7cdc692c2a42b30591c0091147bd97ef14b1c7745dc26bd7cb3ea6bba45698e5044fa2a')
+sha512sums[0]=16d1664e5efb9c3c1bae90b5901e2feed1ee96cfda7e7f6fba2b880b73b07670bc1e19675812cf64b5864d8797eb5f5cbcb4661755c85469928ab741be366c5d
+noextract=(cursor_${pkgver}_amd64.deb) # avoid double tarball
+_app=usr/share/cursor/resources/app
 package() {
-    cd "$srcdir/niri"
-    install -Dm755 "target/release/niri"           -t "$pkgdir/usr/bin/"
-    install -Dm755 "resources/niri-session"        -t "$pkgdir/usr/bin/"
-    install -Dm644 "resources/niri.desktop"        -t "$pkgdir/usr/share/wayland-sessions/"
-    install -Dm644 "resources/niri-portals.conf"   -t "$pkgdir/usr/share/xdg-desktop-portal/"
-    install -Dm644 "resources/dinit/niri"          -t "$pkgdir/usr/lib/dinit.d/user/"
-    install -Dm644 "resources/dinit/niri-shutdown" -t "$pkgdir/usr/lib/dinit.d/user/"
-    install -Dm644 "resources/default-config.kdl"  -t "$pkgdir/usr/share/doc/$pkgname/"
+  # Exclude electron
+  bsdtar -xOf ${noextract[0]} data.tar.xz | tar -xJf - -C "$pkgdir" \
+    --exclude 'usr/share/cursor/[^r]*' --exclude 'usr/share/cursor/*.pak'
+  cd "$pkgdir"
+  mv usr/share/zsh/{vendor-completions,site-functions}
+  ln -sf /usr/bin/node ${_app}/resources/helpers/node
+  install -Dm755 "${srcdir}/rg.sh" ${_app}/node_modules/@vscode/ripgrep/bin/rg
+  ln -sf /usr/bin/xdg-open ${_app}/node_modules/open/xdg-open
+  sed -e "s|code-flags|cursor-flags|" -e "s|/usr/lib/code|/${_app}|" -e "s|/usr/lib/code/code.mjs|--app=/${_app}|" \
+    -e "s|name=electron|name=${_electron}|" "${srcdir}"/code.sh | install -Dm755 /dev/stdin "${pkgdir}"/usr/share/cursor/cursor
+  install -d "$pkgdir"/usr/bin
+  ln -sf /usr/share/cursor/cursor "$pkgdir"/usr/bin/cursor
 }
