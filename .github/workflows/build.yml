@@ -1,51 +1,64 @@
-name: Build niri-dinit (Artix)
+# .github/workflows/release.yml
+name: Build and Release papersway
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build (Artix)
+    name: Build Arch Package
     runs-on: ubuntu-latest
     container:
-      image: artixlinux/artixlinux:base-devel
+      image: archlinux:latest
       options: --security-opt seccomp=unconfined
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Update system & install build deps
+      - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-
-          # pkg depends
+          # Install build tools AND runtime dependencies needed for the 'check()' step
           pacman -S --noconfirm --needed \
-            libpipewire pango glib2 cairo libdisplay-info mesa \
-            seatd udev libinput pixman libxkbcommon gcc-libs glibc \
-            dbus-dinit-user
+            base-devel \
+            tar \
+            xdg-utils ripgrep electron37 nodejs \
+            gcc-libs hicolor-icon-theme libxkbfile
 
-          # make deps
-          pacman -S --noconfirm --needed \
-            git cargo rust rustup clang base-devel
-
-      - name: Add build user (required for makepkg)
+      - name: Set correct permissions
         run: |
           useradd -m builduser
-          echo "builduser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R builduser:builduser .
 
-      - name: Build package
-        run: |
-          sudo -u builduser bash -lc "
-            rustup default stable
-            makepkg -sf --noconfirm
-          "
+      - name: Build the package
+        run: sudo -u builduser makepkg -sf --noconfirm
 
-      - name: Upload artifact
+      - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: niri-dinit-artix
-          path: "*.pkg.tar.*"
+          name: package
+          path: "*.pkg.tar.zst"
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download built package from artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.pkg.tar.zst"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
